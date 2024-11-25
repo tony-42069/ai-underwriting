@@ -9,19 +9,6 @@
 
 AI Underwriting Assistant is a cutting-edge platform that leverages artificial intelligence to streamline the commercial real estate underwriting process. Our solution automates document processing, extracts key financial metrics, and provides intelligent insights to accelerate decision-making.
 
-## Project Structure
-
-```
-.
-├── backend/           # FastAPI backend server
-│   ├── api/          # API endpoints
-│   ├── services/     # Business logic
-│   └── db/           # Database models
-└── frontend/         # React frontend application
-    ├── src/          # Source code
-    └── public/       # Static assets
-```
-
 ## Key Features
 
 - 🚀 Automated document processing
@@ -32,17 +19,11 @@ AI Underwriting Assistant is a cutting-edge platform that leverages artificial i
 
 ## Technology Stack
 
-### Backend
-- FastAPI
-- Python
-- MongoDB
-- Advanced OCR Processing
-
-### Frontend
-- React
-- TypeScript
-- Mantine UI
-- Auth0 Authentication
+Built with modern, enterprise-grade technologies:
+- Advanced AI/ML Processing
+- Cloud-Native Architecture
+- Enterprise Security Standards
+- Modern Web Technologies
 
 ## Project Status
 
@@ -50,17 +31,18 @@ This project is currently under active development. Features and documentation w
 
 ## Security
 
-- Secure authentication via Auth0
+- Enterprise-grade authentication
 - End-to-end encryption
 - Regular security audits
 - Compliance with industry standards
 
 ## Contact
 
-For inquiries about licensing, partnerships, or enterprise solutions, please contact [your contact information].
+For inquiries about licensing, partnerships, or enterprise solutions:
+- X: [@credebtdorian](https://twitter.com/credebtdorian)
 
 ## Legal Notice
 
- 2024 [Your Company Name]. All rights reserved.
+ 2024. All rights reserved.
 
-This software is proprietary and confidential. Unauthorized copying, modification, distribution, or use of this software, via any medium, is strictly prohibited without express written permission from [Your Company Name].
+This software is proprietary and confidential. Unauthorized copying, modification, distribution, or use of this software, via any medium, is strictly prohibited.
