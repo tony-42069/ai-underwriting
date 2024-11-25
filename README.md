@@ -9,6 +9,19 @@
 
 AI Underwriting Assistant is a cutting-edge platform that leverages artificial intelligence to streamline the commercial real estate underwriting process. Our solution automates document processing, extracts key financial metrics, and provides intelligent insights to accelerate decision-making.
 
+## Project Structure
+
+```
+.
+├── backend/           # FastAPI backend server
+│   ├── api/          # API endpoints
+│   ├── services/     # Business logic
+│   └── db/           # Database models
+└── frontend/         # React frontend application
+    ├── src/          # Source code
+    └── public/       # Static assets
+```
+
 ## Key Features
 
 - 🚀 Automated document processing
@@ -48,6 +61,6 @@ For inquiries about licensing, partnerships, or enterprise solutions, please con
 
 ## Legal Notice
 
-© 2024 [Your Company Name]. All rights reserved.
+ 2024 [Your Company Name]. All rights reserved.
 
 This software is proprietary and confidential. Unauthorized copying, modification, distribution, or use of this software, via any medium, is strictly prohibited without express written permission from [Your Company Name].
