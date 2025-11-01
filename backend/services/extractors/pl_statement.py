@@ -18,37 +18,57 @@ class PLStatementExtractor(BaseExtractor):
         self.revenue_items: List[Dict[str, Any]] = []
         self.expense_items: List[Dict[str, Any]] = []
         
-    def can_handle(self, content: str, filename: str) -> bool:
+    def can_handle(self, content: str, filename: str) -> Tuple[bool, float]:
         """
-        Determine if this is a P&L statement.
+        Determine if this is a P&L statement with confidence score.
         
         Args:
             content: Document content
             filename: Name of the file
             
         Returns:
-            bool: True if this is a P&L statement
+            Tuple[bool, float]: (Can handle, confidence score)
         """
-        # Check filename
+        confidence = 0.0
+        
+        # Check filename (30% of confidence)
         filename_indicators = [
-            'p&l', 'profit', 'loss', 'income', 'operating'
+            ('p&l', 0.3),
+            ('profit', 0.2),
+            ('loss', 0.2),
+            ('income', 0.2),
+            ('operating', 0.1)
         ]
-        if any(term in filename.lower() for term in filename_indicators):
-            return True
-            
-        # Check content for P&L indicators
-        indicators = [
-            r'profit\s*(?:and|&)\s*loss',
-            r'income\s*statement',
-            r'operating\s*statement',
-            r'revenue[s]?',
-            r'expenses?',
-            r'net\s*operating\s*income',
-            r'gross\s*income'
+        filename_lower = filename.lower()
+        filename_confidence = sum(
+            weight for term, weight in filename_indicators 
+            if term in filename_lower
+        )
+        
+        # Check content for P&L indicators (70% of confidence)
+        content_indicators = [
+            (r'profit\s*(?:and|&)\s*loss', 0.2),
+            (r'income\s*statement', 0.15),
+            (r'operating\s*statement', 0.1),
+            (r'revenue[s]?', 0.1),
+            (r'expenses?', 0.05),
+            (r'net\s*operating\s*income', 0.05),
+            (r'gross\s*income', 0.05)
         ]
         
         content_lower = content.lower()
-        return any(re.search(pattern, content_lower) for pattern in indicators)
+        content_confidence = sum(
+            weight for pattern, weight in content_indicators 
+            if re.search(pattern, content_lower)
+        )
+        
+        # Calculate total confidence
+        confidence = filename_confidence + content_confidence
+        
+        # Require minimum confidence of 0.3 to handle
+        can_handle = confidence >= 0.3
+        
+        return can_handle, round(confidence, 3)
     
     def extract(self, content: str) -> Dict[str, Any]:
         """
@@ -265,58 +285,250 @@ class PLStatementExtractor(BaseExtractor):
         return 'other'
     
     def _calculate_confidence_scores(self):
-        """Calculate confidence scores for extracted data."""
+        """Calculate enhanced confidence scores with market validation."""
+        # Get market data for validation
+        if not self.market_data:
+            property_type = self._infer_property_type()
+            location = self._infer_location()
+            self.fetch_market_data(property_type, location)
+        
         # Calculate revenue confidence
         revenue_confidences = []
         for item in self.revenue_items:
-            score = 1.0 if item['category'] != 'other' else 0.7
+            base_score = 1.0 if item['category'] != 'other' else 0.7
+            market_score = self._calculate_market_alignment(item['category'], item['amount'])
+            score = (base_score * 0.7) + (market_score * 0.3)
             revenue_confidences.append(score)
+            self.confidence_scores[f"revenue.{item['category']}"] = round(score, 3)
         
         # Calculate expense confidence
         expense_confidences = []
         for item in self.expense_items:
-            score = 1.0 if item['category'] != 'other' else 0.7
+            base_score = 1.0 if item['category'] != 'other' else 0.7
+            market_score = self._calculate_market_alignment(item['category'], item['amount'])
+            score = (base_score * 0.7) + (market_score * 0.3)
             expense_confidences.append(score)
+            self.confidence_scores[f"expense.{item['category']}"] = round(score, 3)
         
-        # Store confidence scores
-        self.confidence_scores = {
-            "revenue": sum(revenue_confidences) / len(revenue_confidences) if revenue_confidences else 0.0,
-            "expenses": sum(expense_confidences) / len(expense_confidences) if expense_confidences else 0.0,
-            "overall": 0.0  # Will be calculated below
+        # Calculate metrics confidence
+        metrics_confidence = self._calculate_metrics_confidence()
+        self.confidence_scores["metrics"] = metrics_confidence
+        
+        # Calculate risk-adjusted confidence
+        risk_score = self._calculate_financial_risk()
+        risk_confidence = 1 - risk_score  # Convert risk to confidence
+        self.confidence_scores["risk_adjusted"] = round(risk_confidence, 3)
+        
+        # Store category confidences
+        self.confidence_scores["revenue"] = round(
+            sum(revenue_confidences) / len(revenue_confidences) if revenue_confidences else 0.0,
+            3
+        )
+        self.confidence_scores["expenses"] = round(
+            sum(expense_confidences) / len(expense_confidences) if expense_confidences else 0.0,
+            3
+        )
+        
+        # Calculate overall confidence with weightings
+        weights = {
+            "revenue": 0.3,
+            "expenses": 0.3,
+            "metrics": 0.2,
+            "risk_adjusted": 0.2
         }
         
-        # Calculate overall confidence
-        scores = list(self.confidence_scores.values())
-        self.confidence_scores["overall"] = sum(scores) / len(scores)
+        self.confidence_scores["overall"] = round(
+            self.confidence_scores["revenue"] * weights["revenue"] +
+            self.confidence_scores["expenses"] * weights["expenses"] +
+            metrics_confidence * weights["metrics"] +
+            risk_confidence * weights["risk_adjusted"],
+            3
+        )
     
+    def _get_required_fields(self) -> List[str]:
+        """Get list of required fields for P&L statement."""
+        return ['gross_income', 'total_expenses', 'noi']
+
+    def _get_format_rules(self) -> Dict[str, Any]:
+        """Get format validation rules for P&L fields."""
+        import re
+        return {
+            'amount': re.compile(r'^\-?\d+(\.\d{1,2})?$'),
+            'percentage': re.compile(r'^\d+(\.\d{1,2})?%$'),
+            'description': re.compile(r'^[A-Za-z0-9\s\-\&\.]+$')
+        }
+
+    def _get_range_rules(self) -> Dict[str, Tuple[float, float]]:
+        """Get numerical range rules for P&L fields."""
+        return {
+            'expense_ratio': (20, 80),      # 20% to 80%
+            'noi_margin': (20, 80),         # 20% to 80%
+            'revenue_per_sf': (10, 1000),   # $10 to $1000 per SF annually
+            'expense_per_sf': (5, 500)      # $5 to $500 per SF annually
+        }
+
+    def _calculate_metrics_confidence(self) -> float:
+        """Calculate confidence score for financial metrics."""
+        summary = self.extracted_data.get("summary", {})
+        if not summary:
+            return 0.0
+            
+        scores = []
+        
+        # Validate expense ratio against market data
+        if self.market_data and "expense_ratio" in summary:
+            market_range = self.market_data.get("expense_ratio_range")
+            if market_range:
+                min_ratio, max_ratio = market_range
+                ratio = summary["expense_ratio"]
+                scores.append(
+                    self._calculate_range_confidence("expense_ratio", ratio, (min_ratio, max_ratio))
+                )
+        
+        # Validate NOI against market data
+        if self.market_data and "noi" in summary:
+            market_range = self.market_data.get("noi_range")
+            if market_range:
+                min_noi, max_noi = market_range
+                noi = summary["noi"]
+                scores.append(
+                    self._calculate_range_confidence("noi", noi, (min_noi, max_noi))
+                )
+        
+        return sum(scores) / len(scores) if scores else 0.0
+
+    def _calculate_market_alignment(self, category: str, amount: float) -> float:
+        """Calculate market alignment score for a line item."""
+        if not self.market_data:
+            return 1.0
+            
+        try:
+            # Get market ranges for the category
+            ranges = {
+                # Revenue categories
+                'rental_income': self.market_data.get('rental_income_range'),
+                'parking_income': self.market_data.get('parking_income_range'),
+                'other_income': self.market_data.get('other_income_range'),
+                
+                # Expense categories
+                'utilities': self.market_data.get('utilities_range'),
+                'repairs_maintenance': self.market_data.get('repairs_range'),
+                'property_tax': self.market_data.get('tax_range'),
+                'insurance': self.market_data.get('insurance_range'),
+                'management_fees': self.market_data.get('management_range')
+            }
+            
+            category_range = ranges.get(category.lower().replace(' ', '_'))
+            if category_range:
+                min_val, max_val = category_range
+                if min_val <= amount <= max_val:
+                    return 1.0
+                
+                # Calculate distance from valid range
+                distance = min(abs(amount - min_val), abs(amount - max_val))
+                range_size = max_val - min_val
+                return max(0, 1 - (distance / range_size))
+                
+            return 1.0  # Default to full confidence if no range available
+            
+        except Exception as e:
+            logger.error(f"Error calculating market alignment: {str(e)}")
+            return 1.0
+
+    def _infer_property_type(self) -> str:
+        """Infer property type from P&L data."""
+        # Analyze revenue sources to infer property type
+        revenue_categories = [item['category'].lower() for item in self.revenue_items]
+        
+        if any('apartment' in cat or 'residential' in cat for cat in revenue_categories):
+            return 'multifamily'
+        elif any('retail' in cat or 'restaurant' in cat for cat in revenue_categories):
+            return 'retail'
+        elif any('warehouse' in cat or 'industrial' in cat for cat in revenue_categories):
+            return 'industrial'
+        else:
+            return 'office'
+
+    def _infer_location(self) -> str:
+        """Infer property location from document content."""
+        # TODO: Implement location extraction from document header or metadata
+        return "unknown"
+
     def validate(self) -> bool:
         """
-        Validate the extracted P&L data.
+        Enhanced validation with market data comparison.
         
         Returns:
             bool: True if validation passed
         """
         self.validation_errors = []
         
-        # Check for minimum required data
-        if not self.revenue_items and not self.expense_items:
-            self.validation_errors.append("No financial data extracted")
+        try:
+            # Basic validation
+            if not self.revenue_items and not self.expense_items:
+                self.validation_errors.append("No financial data extracted")
+                return False
+            
+            summary = self.extracted_data.get("summary", {})
+            
+            # Validate ratios
+            if summary.get("expense_ratio", 0) > 100:
+                self.validation_errors.append("Invalid expense ratio > 100%")
+            
+            if summary.get("noi", 0) > summary.get("gross_income", 0):
+                self.validation_errors.append("NOI cannot be greater than gross income")
+            
+            # Validate against market data
+            if self.market_data:
+                # Validate expense ratio
+                market_expense_ratio = self.market_data.get("expense_ratio_range")
+                if market_expense_ratio:
+                    min_ratio, max_ratio = market_expense_ratio
+                    current_ratio = summary.get("expense_ratio", 0)
+                    if not min_ratio <= current_ratio <= max_ratio:
+                        self.validation_errors.append(
+                            f"Expense ratio ({current_ratio}%) outside market range "
+                            f"[{min_ratio}%, {max_ratio}%]"
+                        )
+                
+                # Validate NOI
+                market_noi_range = self.market_data.get("noi_range")
+                if market_noi_range:
+                    min_noi, max_noi = market_noi_range
+                    current_noi = summary.get("noi", 0)
+                    if not min_noi <= current_noi <= max_noi:
+                        self.validation_errors.append(
+                            f"NOI (${current_noi:,.2f}) outside market range "
+                            f"[${min_noi:,.2f}, ${max_noi:,.2f}]"
+                        )
+            
+            # Validate individual items
+            for item in self.revenue_items + self.expense_items:
+                if item.get("amount", 0) < 0:
+                    self.validation_errors.append(
+                        f"Negative amount found: {item.get('description', 'Unknown item')}"
+                    )
+                
+                # Validate against market ranges if available
+                category = item['category'].lower().replace(' ', '_')
+                if self.market_data:
+                    range_key = f"{category}_range"
+                    if range_key in self.market_data:
+                        min_val, max_val = self.market_data[range_key]
+                        amount = item['amount']
+                        if not min_val <= amount <= max_val:
+                            self.validation_errors.append(
+                                f"{item['description']} (${amount:,.2f}) outside "
+                                f"market range [${min_val:,.2f}, ${max_val:,.2f}]"
+                            )
+            
+            # Record validation metadata
+            self.processing_metadata["validation_completed"] = datetime.now().isoformat()
+            self.processing_metadata["validation_success"] = len(self.validation_errors) == 0
+            
+            return len(self.validation_errors) == 0
+            
+        except Exception as e:
+            logger.error(f"Error in validation: {str(e)}")
+            self.validation_errors.append(f"Validation error: {str(e)}")
             return False
-        
-        # Validate summary calculations
-        summary = self.extracted_data.get("summary", {})
-        
-        if summary.get("expense_ratio", 0) > 100:
-            self.validation_errors.append("Invalid expense ratio > 100%")
-        
-        if summary.get("noi", 0) > summary.get("gross_income", 0):
-            self.validation_errors.append("NOI cannot be greater than gross income")
-        
-        # Validate individual items
-        for item in self.revenue_items + self.expense_items:
-            if item.get("amount", 0) < 0:
-                self.validation_errors.append(
-                    f"Negative amount found: {item.get('description', 'Unknown item')}"
-                )
-        
-        return len(self.validation_errors) == 0

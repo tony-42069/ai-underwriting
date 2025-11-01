@@ -17,33 +17,47 @@ class RentRollExtractor(BaseExtractor):
         super().__init__()
         self.tenant_data: List[Dict[str, Any]] = []
         
-    def can_handle(self, content: str, filename: str) -> bool:
+    def can_handle(self, content: str, filename: str) -> Tuple[bool, float]:
         """
-        Determine if this is a rent roll document.
+        Determine if this is a rent roll document with confidence score.
         
         Args:
             content: Document content
             filename: Name of the file
             
         Returns:
-            bool: True if this is a rent roll
+            Tuple[bool, float]: (Can handle, confidence score)
         """
-        # Check filename
-        if any(term in filename.lower() for term in ['rent', 'roll', 'tenant']):
-            return True
-            
-        # Check content for rent roll indicators
+        confidence = 0.0
+        
+        # Check filename (30% of confidence)
+        filename_indicators = ['rent', 'roll', 'tenant']
+        filename_matches = sum(term in filename.lower() for term in filename_indicators)
+        filename_confidence = min(filename_matches / len(filename_indicators), 1.0) * 0.3
+        
+        # Check content for rent roll indicators (70% of confidence)
         indicators = [
-            r'rent\s*roll',
-            r'tenant\s*schedule',
-            r'lease\s*schedule',
-            r'unit\s*number',
-            r'tenant\s*name',
-            r'monthly\s*rent'
+            (r'rent\s*roll', 0.2),
+            (r'tenant\s*schedule', 0.1),
+            (r'lease\s*schedule', 0.1),
+            (r'unit\s*number', 0.1),
+            (r'tenant\s*name', 0.1),
+            (r'monthly\s*rent', 0.1)
         ]
         
         content_lower = content.lower()
-        return any(re.search(pattern, content_lower) for pattern in indicators)
+        content_confidence = sum(
+            weight for pattern, weight in indicators 
+            if re.search(pattern, content_lower)
+        )
+        
+        # Calculate total confidence
+        confidence = filename_confidence + content_confidence
+        
+        # Require minimum confidence of 0.3 to handle
+        can_handle = confidence >= 0.3
+        
+        return can_handle, round(confidence, 3)
     
     def extract(self, content: str) -> Dict[str, Any]:
         """
@@ -224,56 +238,237 @@ class RentRollExtractor(BaseExtractor):
             return None
     
     def _calculate_confidence_scores(self):
-        """Calculate confidence scores for extracted data."""
+        """Calculate enhanced confidence scores with market validation."""
         # Calculate tenant-level confidence
         tenant_confidences = []
-        required_fields = ['unit', 'square_footage', 'current_rent']
+        
+        # Get market data for validation
+        if not self.market_data:
+            property_type = self._infer_property_type()
+            location = self._infer_location()
+            self.fetch_market_data(property_type, location)
         
         for tenant in self.tenant_data:
-            field_scores = []
-            for field in required_fields:
-                score = self.calculate_field_confidence(field, tenant.get(field))
-                field_scores.append(score)
+            field_scores = {}
+            
+            # Basic field confidence
+            for field in self._get_required_fields():
+                value = tenant.get(field)
+                expected_range = self._get_field_range(field)
+                score = self.calculate_field_confidence(field, value, expected_range)
+                field_scores[field] = score
                 self.confidence_scores[f"tenant.{field}"] = score
             
-            tenant_confidences.append(sum(field_scores) / len(field_scores))
+            # Market-based confidence
+            if self.market_data:
+                # Validate rent against market rates
+                rent_psf = (tenant.get('current_rent', 0) * 12) / tenant.get('square_footage', 1)
+                market_rent_range = self.market_data.get('market_rent_range', (0, 1000))
+                rent_score = self._calculate_range_confidence(
+                    'rent_psf', rent_psf, market_rent_range
+                )
+                field_scores['market_rent'] = rent_score
+                
+                # Validate lease terms
+                if tenant.get('start_date') and tenant.get('end_date'):
+                    lease_term = self._calculate_lease_term(
+                        tenant['start_date'], 
+                        tenant['end_date']
+                    )
+                    term_score = self._calculate_lease_term_confidence(lease_term)
+                    field_scores['lease_term'] = term_score
+            
+            # Calculate tenant risk score
+            risk_score = self._calculate_tenant_risk_score(tenant)
+            field_scores['risk'] = 1 - risk_score  # Convert risk to confidence
+            
+            # Average all scores for tenant
+            tenant_score = sum(field_scores.values()) / len(field_scores)
+            tenant_confidences.append(tenant_score)
+            
+            # Store individual tenant confidence
+            self.confidence_scores[f"tenant_{tenant.get('unit', 'unknown')}"] = round(tenant_score, 3)
         
-        # Overall confidence score
-        self.confidence_scores["overall"] = (
-            sum(tenant_confidences) / len(tenant_confidences)
-            if tenant_confidences else 0.0
+        # Calculate summary metrics confidence
+        summary_confidence = self._calculate_summary_confidence()
+        self.confidence_scores["summary"] = summary_confidence
+        
+        # Overall confidence score with weightings
+        weights = {
+            "tenants": 0.6,
+            "summary": 0.2,
+            "market_validation": 0.2
+        }
+        
+        tenant_avg = (sum(tenant_confidences) / len(tenant_confidences)) if tenant_confidences else 0
+        market_score = self._calculate_market_validation_score()
+        
+        self.confidence_scores["overall"] = round(
+            tenant_avg * weights["tenants"] +
+            summary_confidence * weights["summary"] +
+            market_score * weights["market_validation"],
+            3
         )
     
-    def validate(self) -> bool:
-        """
-        Validate the extracted rent roll data.
+    def _get_required_fields(self) -> List[str]:
+        """Get list of required fields for rent roll."""
+        return ['unit', 'square_footage', 'current_rent', 'tenant']
+
+    def _get_format_rules(self) -> Dict[str, Any]:
+        """Get format validation rules for rent roll fields."""
+        import re
+        return {
+            'unit': re.compile(r'^[A-Za-z0-9\-\.]+$'),
+            'square_footage': re.compile(r'^\d+(\.\d{1,2})?$'),
+            'current_rent': re.compile(r'^\d+(\.\d{1,2})?$'),
+            'start_date': re.compile(r'^\d{4}-\d{2}-\d{2}$'),
+            'end_date': re.compile(r'^\d{4}-\d{2}-\d{2}$')
+        }
+
+    def _get_range_rules(self) -> Dict[str, Tuple[float, float]]:
+        """Get numerical range rules for rent roll fields."""
+        return {
+            'square_footage': (100, 1000000),  # 100 to 1M sq ft
+            'current_rent': (0, 1000000),      # $0 to $1M monthly
+            'occupancy_rate': (0, 100),        # 0% to 100%
+            'security_deposit': (0, 1000000)   # $0 to $1M
+        }
+
+    def _get_field_range(self, field: str) -> Optional[Tuple[float, float]]:
+        """Get expected range for a field based on market data."""
+        if not self.market_data:
+            return None
+            
+        ranges = {
+            'square_footage': self.market_data.get('unit_size_range'),
+            'current_rent': self.market_data.get('monthly_rent_range'),
+            'rent_psf': self.market_data.get('market_rent_range')
+        }
+        return ranges.get(field)
+
+    def _calculate_tenant_risk_score(self, tenant: Dict[str, Any]) -> float:
+        """Calculate risk score for an individual tenant."""
+        risk_factors = {
+            'lease_term': 0.3,
+            'credit_quality': 0.3,
+            'size': 0.2,
+            'industry': 0.2
+        }
         
-        Returns:
-            bool: True if validation passed
-        """
-        self.validation_errors = []
+        scores = {
+            'lease_term': self._assess_lease_term_risk(tenant),
+            'credit_quality': self._assess_credit_risk(tenant),
+            'size': self._assess_size_risk(tenant),
+            'industry': self._assess_industry_risk(tenant)
+        }
         
-        # Check for minimum required data
-        if not self.tenant_data:
-            self.validation_errors.append("No tenant data extracted")
-            return False
-        
-        # Validate summary calculations
+        return sum(score * risk_factors[factor] for factor, score in scores.items())
+
+    def _calculate_summary_confidence(self) -> float:
+        """Calculate confidence score for summary metrics."""
         summary = self.extracted_data.get("summary", {})
-        if summary.get("occupancy_rate", 0) > 100:
-            self.validation_errors.append("Invalid occupancy rate > 100%")
-        
-        # Validate individual tenant records
-        for i, tenant in enumerate(self.tenant_data):
-            # Required fields
-            if not tenant.get("unit"):
-                self.validation_errors.append(f"Missing unit number for tenant {i+1}")
+        if not summary:
+            return 0.0
             
-            # Numeric validations
-            if tenant.get("square_footage", 0) <= 0:
-                self.validation_errors.append(f"Invalid square footage for unit {tenant.get('unit', i+1)}")
-            
-            if tenant.get("current_rent", 0) < 0:
-                self.validation_errors.append(f"Invalid rent amount for unit {tenant.get('unit', i+1)}")
+        scores = []
         
-        return len(self.validation_errors) == 0
+        # Validate occupancy rate
+        if 0 <= summary.get("occupancy_rate", -1) <= 100:
+            scores.append(1.0)
+        else:
+            scores.append(0.0)
+            
+        # Validate average rent PSF against market data
+        if self.market_data and "average_rent_psf" in summary:
+            market_range = self.market_data.get("market_rent_range")
+            if market_range:
+                min_rent, max_rent = market_range
+                rent_psf = summary["average_rent_psf"]
+                if min_rent <= rent_psf <= max_rent:
+                    scores.append(1.0)
+                else:
+                    distance = min(abs(rent_psf - min_rent), abs(rent_psf - max_rent))
+                    range_size = max_rent - min_rent
+                    scores.append(max(0, 1 - (distance / range_size)))
+        
+        return sum(scores) / len(scores) if scores else 0.0
+
+    def _infer_property_type(self) -> str:
+        """Infer property type from rent roll data."""
+        # Analyze tenant mix and unit sizes to infer property type
+        avg_size = sum(t.get('square_footage', 0) for t in self.tenant_data) / len(self.tenant_data)
+        
+        if avg_size < 1000:
+            return 'multifamily'
+        elif avg_size < 5000:
+            return 'retail'
+        elif any('warehouse' in t.get('tenant', '').lower() for t in self.tenant_data):
+            return 'industrial'
+        else:
+            return 'office'
+
+    def _infer_location(self) -> str:
+        """Infer property location from document content."""
+        # TODO: Implement location extraction from document header or metadata
+        return "unknown"
+
+    def _calculate_lease_term(self, start: str, end: str) -> int:
+        """Calculate lease term in months."""
+        from datetime import datetime
+        start_date = datetime.fromisoformat(start)
+        end_date = datetime.fromisoformat(end)
+        return ((end_date - start_date).days + 30) // 30
+
+    def _calculate_lease_term_confidence(self, term_months: int) -> float:
+        """Calculate confidence score for lease term."""
+        if term_months <= 0:
+            return 0.0
+        elif term_months <= 12:
+            return 0.7  # Short-term lease
+        elif term_months <= 60:
+            return 1.0  # Standard lease term
+        else:
+            return 0.9  # Long-term lease
+
+    def _assess_lease_term_risk(self, tenant: Dict[str, Any]) -> float:
+        """Assess risk based on lease term."""
+        if not (tenant.get('start_date') and tenant.get('end_date')):
+            return 0.8  # High risk if dates missing
+            
+        term_months = self._calculate_lease_term(
+            tenant['start_date'], 
+            tenant['end_date']
+        )
+        
+        if term_months <= 12:
+            return 0.8  # High risk for short term
+        elif term_months <= 36:
+            return 0.5  # Medium risk
+        else:
+            return 0.2  # Low risk for long term
+
+    def _assess_credit_risk(self, tenant: Dict[str, Any]) -> float:
+        """Assess tenant credit risk."""
+        # TODO: Implement credit check integration
+        return 0.5  # Medium risk default
+
+    def _assess_size_risk(self, tenant: Dict[str, Any]) -> float:
+        """Assess risk based on tenant size."""
+        sf = tenant.get('square_footage', 0)
+        total_sf = sum(t.get('square_footage', 0) for t in self.tenant_data)
+        
+        if total_sf == 0:
+            return 0.5
+            
+        concentration = sf / total_sf
+        if concentration > 0.3:
+            return 0.8  # High risk for large concentration
+        elif concentration > 0.1:
+            return 0.5  # Medium risk
+        else:
+            return 0.3  # Low risk for good diversification
+
+    def _assess_industry_risk(self, tenant: Dict[str, Any]) -> float:
+        """Assess risk based on tenant industry."""
+        # TODO: Implement industry risk assessment
+        return 0.5  # Medium risk default
