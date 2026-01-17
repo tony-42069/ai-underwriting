@@ -19,40 +19,80 @@ Generated: 2026-01-17 06:50 UTC
 
 | Category | Score |
 |----------|-------|
-| **Overall** | `░░░░░░░░░░░░░░░░░░░░` 0% |
-| Code Quality | `░░░░░░░░░░░░░░░░░░░░` 0% |
-| Documentation | `░░░░░░░░░░░░░░░░░░░░` 0% |
-| Structure | `░░░░░░░░░░░░░░░░░░░░` 0% |
-| Testing | `░░░░░░░░░░░░░░░░░░░░` 0% |
+| **Overall** | `█████████████░░░░░░░` 65% |
+| Code Quality | `███████████████░░░░░` 75% |
+| Documentation | `██████████████░░░░░░` 70% |
+| Structure | `████████████████░░░░` 80% |
+| Testing | `████████░░░░░░░░░░░░` 40% |
 
 ## Summary
 
-No summary available.
+The repository 'ai-underwriting' is a Python library designed for automating commercial real estate document analysis and risk assessment. It has a well-defined structure but lacks critical components like testing and continuous integration. The code quality is generally good, but there are areas that need improvement, especially in documentation and testing.
 
 ## Stuck Areas
 
-No stuck areas identified.
+- Lack of test cases and CI/CD pipelines
+- Incomplete implementation in some files, such as backend/api/documents.py
+- TODO: bool = True
 
 ## Next Steps
 
-No specific next steps recommended.
+1. Implement comprehensive test cases for all major functionalities.
+2. Set up a CI/CD pipeline to automate testing and deployment.
+3. Complete the implementation of functions marked as TODO or incomplete.
+4. Enhance documentation, especially for API endpoints and configuration settings.
+5. Address 6 TODO/FIXME items
+6. Add or improve test coverage
 
 ## Issues Found
 
-No critical issues found.
+| Severity | File | Description |
+|----------|------|-------------|
+| 🟡 | Unknown | Hardcoded CORS origin |
+| 🔴 | Unknown | Potential security risk by saving files without sa |
+| 🟡 | Unknown | No file size limit for uploads, which could lead t |
+| 🟢 | Unknown | Error handling in file saving is broad and does no |
+| 🟡 | Unknown | No validation of OCR and financial analysis result |
+| ⚪ | Unknown | The code saves uploaded files directly to the serv |
+| ⚪ | Unknown | The error handling in the `upload_document` functi |
+| ⚪ | Unknown | The 'uploads' directory path is hardcoded, which m |
+| ⚪ | Unknown | Sensitive default values for SECRET_KEY are hardco |
+| ⚪ | Unknown | Environment variable defaults for sensitive inform |
+| ⚪ | Unknown | The exception handling in `connect_db` and `_creat |
+| ⚪ | Unknown | The `db` attribute is not type hinted, which can l |
+| ⚪ | Unknown | The `connect_db` method uses hardcoded default val |
+| 🟢 | backend/services/extractors/base.py | Line exceeds 120 characters (128 chars) |
+| 🟢 | backend/services/extractors/base.py | Line exceeds 120 characters (122 chars) |
+| ⚪ | Unknown | The method `fetch_market_data` contains a TODO com |
+| ⚪ | Unknown | Error handling in methods like `fetch_market_data` |
+| ⚪ | Unknown | The default risk score of 0.5 is repeated across m |
+| ⚪ | Unknown | Several methods contain placeholder logic, such as |
+| 🟢 | backend/services/extractors/lease.py | Line exceeds 120 characters (202 chars) |
 
 ## TODOs/FIXMEs
 
-No TODO or FIXME comments found.
+### BUG
+- bool = True
+
+### TODO
+- Implement market data fetching from the market-data package
+- Implement location extraction from document header or metadata
+- Implement location extraction from document header or metadata
+- Implement credit check integration
+- Implement industry risk assessment
 
 ## Recommendations
 
-No additional recommendations.
+1. Add unit and integration tests to cover all functionalities.
+2. Use environment variables for sensitive information and paths.
+3. Implement authentication for MongoDB connections to enhance security.
+4. Consider using a linter and formatter to maintain code consistency.
+5. Improve the README with detailed setup instructions and usage examples.
 
 ## Files Analyzed
 
-- Total Files: 0
-- Total Lines of Code: 0
+- Total Files: 20
+- Total Lines of Code: 3737
 
 ---
 
