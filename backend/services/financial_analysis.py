@@ -1,9 +1,20 @@
 import re
+import logging
 from typing import Dict, Optional
 from config.settings import settings
 
+logger = logging.getLogger(__name__)
+
 
 class FinancialAnalysis:
+    DEFAULTS = {
+        "property_value_multiplier": 2.0,
+        "loan_to_value_ratio": 0.7,
+        "debt_service_rate": 0.08,
+        "min_noi_threshold": 100000,
+        "min_value_threshold": 100000,
+    }
+
     @staticmethod
     def extract_numbers(text: str) -> list:
         """Extract all numbers from text."""
@@ -102,6 +113,42 @@ class FinancialAnalysis:
         return (loan_amount / property_value) * 100
 
     @classmethod
+    def _estimate_from_numbers(cls, numbers: list) -> Optional[float]:
+        """Estimate NOI from extracted numbers using configurable thresholds."""
+        if not numbers:
+            return None
+        max_val = max(numbers)
+        threshold = cls.DEFAULTS["min_noi_threshold"]
+        if max_val > threshold:
+            return max_val / 12
+        return None
+
+    @classmethod
+    def _estimate_property_value(cls, numbers: list) -> Optional[float]:
+        """Estimate property value from extracted numbers using configurable multipliers."""
+        if not numbers:
+            return None
+        max_val = max(numbers)
+        threshold = cls.DEFAULTS["min_value_threshold"]
+        if max_val > threshold:
+            return max_val * cls.DEFAULTS["property_value_multiplier"]
+        return None
+
+    @classmethod
+    def _estimate_loan_amount(cls, property_value: float) -> Optional[float]:
+        """Estimate loan amount using configurable LTV ratio."""
+        if not property_value:
+            return None
+        return property_value * cls.DEFAULTS["loan_to_value_ratio"]
+
+    @classmethod
+    def _estimate_debt_service(cls, loan_amount: float) -> Optional[float]:
+        """Estimate debt service using configurable rate."""
+        if not loan_amount:
+            return None
+        return loan_amount * cls.DEFAULTS["debt_service_rate"]
+
+    @classmethod
     async def analyze_document(cls, ocr_result: Dict) -> Dict:
         """Analyze OCR results and extract financial metrics."""
         text = ocr_result.get("text", "")
@@ -113,24 +160,19 @@ class FinancialAnalysis:
         debt_service = cls.find_debt_service(text)
 
         if noi is None or noi == 0:
-            logger = logging.getLogger(__name__)
-            logger.warning("NOI not found in document, using extracted numbers")
+            logger.warning("NOI not found in document, attempting estimation")
             numbers = cls.extract_numbers(text)
-            if numbers:
-                noi = max(numbers) / 12 if max(numbers) > 100000 else max(numbers)
+            noi = cls._estimate_from_numbers(numbers)
 
         if property_value is None:
             numbers = cls.extract_numbers(text)
-            if numbers:
-                property_value = max(numbers) * 2 if max(numbers) > 100000 else None
+            property_value = cls._estimate_property_value(numbers)
 
         if loan_amount is None:
-            if property_value:
-                loan_amount = property_value * 0.7
+            loan_amount = cls._estimate_loan_amount(property_value)
 
         if debt_service is None:
-            if loan_amount:
-                debt_service = loan_amount * 0.08
+            debt_service = cls._estimate_debt_service(loan_amount)
 
         noi = noi or 0
         property_value = property_value or 0
