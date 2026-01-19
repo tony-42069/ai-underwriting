@@ -17,6 +17,23 @@ from backend.models.api import (
     RentRollData,
     ExtractorInfo,
 )
+from backend.models.auth import (
+    UserRole,
+    UserBase,
+    UserCreate,
+    UserUpdate,
+    UserInDB,
+    UserResponse,
+    Token,
+    TokenData,
+    TokenRequest,
+    RefreshTokenRequest,
+    PasswordResetRequest,
+    PasswordReset,
+    ChangePassword,
+    AuthResponse,
+    MessageResponse,
+)
 
 __all__ = [
     "Document",
@@ -36,4 +53,19 @@ __all__ = [
     "RentRollSummary",
     "RentRollData",
     "ExtractorInfo",
+    "UserRole",
+    "UserBase",
+    "UserCreate",
+    "UserUpdate",
+    "UserInDB",
+    "UserResponse",
+    "Token",
+    "TokenData",
+    "TokenRequest",
+    "RefreshTokenRequest",
+    "PasswordResetRequest",
+    "PasswordReset",
+    "ChangePassword",
+    "AuthResponse",
+    "MessageResponse",
 ]

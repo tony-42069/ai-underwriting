@@ -1,15 +1,18 @@
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exception_handlers import http_exception_handler
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 from models.api import (
     ErrorResponse,
     DocumentUploadResponse,
     DocumentStatusResponse,
     FinancialMetrics,
 )
+from models.auth import TokenData
+from middleware.auth import get_current_user
 from services.ocr import DocumentProcessor
 from services.financial_analysis import FinancialAnalysis
 from db.mongodb import MongoDB
@@ -17,12 +20,76 @@ from bson import ObjectId
 import os
 import logging
 import traceback
-from typing import AsyncGenerator
+import time
+from typing import AsyncGenerator, Dict, Optional
+from collections import defaultdict
+from threading import Lock
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 processor = DocumentProcessor()
+
+rate_limit_store: Dict[str, list] = defaultdict(list)
+rate_limit_lock = Lock()
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """Simple in-memory rate limiting middleware."""
+
+    def __init__(self, app, requests: int = 100, seconds: int = 60):
+        super().__init__(app)
+        self.requests = requests
+        self.seconds = seconds
+
+    def check_rate_limit(self, client_id: str) -> tuple[bool, int]:
+        """Check if client has exceeded rate limit."""
+        now = time.time()
+        window_start = now - self.seconds
+
+        with rate_limit_lock:
+            client_requests = rate_limit_store[client_id]
+            client_requests[:] = [t for t in client_requests if t > window_start]
+
+            if len(client_requests) >= self.requests:
+                return False, self.seconds
+
+            client_requests.append(now)
+            return True, 0
+
+    async def dispatch(self, request: Request, call_next):
+        client_id = request.client.host if request.client else "unknown"
+
+        allowed, wait_seconds = self.check_rate_limit(client_id)
+
+        if not allowed:
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "status": "error",
+                    "error": "Rate limit exceeded",
+                    "retry_after": wait_seconds,
+                },
+                headers={"Retry-After": str(wait_seconds)},
+            )
+
+        response = await call_next(request)
+        return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Content-Security-Policy"] = "default-src 'self'"
+
+        return response
 
 
 @asynccontextmanager
@@ -54,6 +121,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware, requests=100, seconds=60)
 
 
 @app.exception_handler(StarletteHTTPException)
@@ -94,8 +164,20 @@ async def upload_document(file: UploadFile = File(...)):
 
         try:
             content = await file.read()
+            if len(content) > 50 * 1024 * 1024:
+                raise HTTPException(status_code=413, detail="File too large (max 50MB)")
+
+            file_ext = os.path.splitext(file.filename)[1].lower()
+            if file_ext not in [".pdf", ".docx", ".xlsx"]:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type: {file_ext}"
+                )
+
             with open(file_path, "wb") as buffer:
                 buffer.write(content)
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Failed to save file: {str(e)}")
             raise HTTPException(status_code=500, detail="Failed to save file")
