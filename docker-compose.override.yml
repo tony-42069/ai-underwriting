@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/backend/uploads
+    environment:
+      - DEBUG=True
+      - LOG_LEVEL=DEBUG
+    command: >
+      sh -c "pip install -q -r requirements.txt && 
+             uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    ports:
+      - "3000:80"
+    command: npm run dev -- --host 0.0.0.0
+
+  mongo:
+    ports:
+      - "27017:27017"
+
+  mongo-express:
+    ports:
+      - "8081:8081"
