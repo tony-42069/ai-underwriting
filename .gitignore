@@ -27,6 +27,10 @@ wheels/
 *.egg
 venv/
 .venv/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Node
 node_modules/
@@ -47,8 +51,8 @@ Thumbs.db
 coverage/
 .coverage
 htmlcov/
-.pytest_cache/
 .tox/
+.pytest_results/
 
 # Build and dist
 /dist
@@ -71,6 +75,7 @@ lerna-debug.log*
 # Local files
 uploads/
 *.local
+.tmp/
 
 # Production
 /build
@@ -82,3 +87,25 @@ uploads/
 .env.development.local
 .env.test.local
 .env.production.local
+
+# IDE specific
+*.sublime-*
+*.idea
+*.project
+*.settings
+*.classpath
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+backend/uploads/
+*.sqlite3
+.pytest_cache/
+.ruff_cache/

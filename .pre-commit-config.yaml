@@ -1,0 +1,77 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.14.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - pydantic>=2.10.0
+          - pydantic-settings>=2.6.0
+          - motor>=3.6.0
+          - fastapi>=0.115.0
+        args: [--no-error-summary, --show-error-codes]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: detect-private-key
+
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.9.0
+    hooks:
+      - id: python-check-blanket-no-type-check
+      - id: python-check-mock-methods
+      - id: python-use-type-annotations
+      - id: python-test-imports
+
+  - repo: https://github.com/jsh9/pydoclint
+    rev: v0.4.1
+    hooks:
+      - id: pydoclint
+        args: ['--skip-check=DOC201', '--ignore=DOC502']
+
+  - repo: local
+    hooks:
+      - id: pytest-check
+        name: Run pytest
+        entry: pytest --co -q
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+      - id: codespell
+        args: [--ignore-words-list=ans,fo,hist,parm,te,vertexes]
+        files: \.(py|txt|md|rst|yml|yaml)$
+
+exclude: '(\.git|\.venv|venv|node_modules|\.pytest_cache|__pycache__|\.mypy_cache|dist|build|\.egg-info)'
+
+default_stages: [pre-commit]
+
+fail_fast: false
+
+verbose: true
