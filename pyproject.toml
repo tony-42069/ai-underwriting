@@ -1,0 +1,177 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-underwriting"
+version = "0.1.0"
+description = "AI-powered commercial real estate underwriting assistant"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "AI Underwriting Team"}
+]
+keywords = ["real-estate", "underwriting", "document-processing", "ai", "ocr"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "annotated-types>=0.7.0",
+    "anyio>=4.6.2",
+    "bcrypt>=4.2.1",
+    "cffi>=1.17.1",
+    "click>=8.1.7",
+    "colorama>=0.4.6",
+    "cryptography>=43.0.3",
+    "dnspython>=2.7.0",
+    "ecdsa>=0.19.0",
+    "fastapi>=0.115.5",
+    "h11>=0.14.0",
+    "idna>=3.10",
+    "motor>=3.6.0",
+    "packaging>=24.2",
+    "passlib>=1.7.4",
+    "pdf2image>=1.17.0",
+    "Pillow>=11.0.0",
+    "pyasn1>=0.6.1",
+    "pycparser>=2.22",
+    "pydantic>=2.10.1",
+    "pydantic-core>=2.27.1",
+    "pydantic-settings>=2.6.1",
+    "pymongo>=4.9.2",
+    "pytesseract>=0.3.13",
+    "python-jose>=3.3.0",
+    "python-multipart>=0.0.17",
+    "rsa>=4.9",
+    "six>=1.16.0",
+    "sniffio>=1.3.1",
+    "starlette>=0.41.3",
+    "typing_extensions>=4.12.2",
+    "uvicorn>=0.32.1",
+    "python-dateutil>=2.8.2",
+    "pandas>=2.1.4",
+    "openpyxl>=3.1.2",
+    "python-docx>=1.0.1",
+    "numpy>=1.24.3",
+    "scikit-learn>=1.3.2",
+    "chromadb>=0.4.18",
+    "openai>=1.3.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.3",
+    "pytest-asyncio>=0.24.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.7.4",
+    "mypy>=1.14.0",
+    "pre-commit>=4.1.0",
+    "httpx>=0.28.1",
+    "black>=24.10.0",
+    "isort>=5.13.2",
+]
+
+[project.scripts]
+underwriting-api = "backend.main:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["backend*"]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+select = [
+    "F",     # pyflakes
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort
+    "C4",    # flake8-comprehensions
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "C90",   # mccabe complexity
+    "SIM",   # simplify
+    "ARG",   # unused arguments
+    "ERA",   # eradicate (commented-out code)
+    "PL",    # pylint
+]
+ignore = [
+    "PLR0913",  # Too many arguments
+    "PLR0912",  # Too many branches
+    "PLR0915",  # Too many statements
+    "PLR2004",  # Magic value used in comparison
+    "C901",     # Function too complex
+    "E501",     # Line too long (handled by formatter)
+]
+
+[tool.ruff.per-file-ignores]
+"__init__.py" = ["F401", "UP035"]
+"tests/*" = ["ARG001", "S101", "PLR2004"]
+
+[tool.ruff.isort]
+known-first-party = ["backend", "tests"]
+force-sorting-within-sections = true
+
+[tool.black]
+line-length = 100
+target-version = ["py39", "py310", "py311", "py312"]
+skip-string-normalization = false
+
+[tool.isort]
+profile = "black"
+line-length = 100
+skip = [".venv", "venv", "node_modules"]
+known_first_party = ["backend", "tests"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_ignores = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+no_implicit_optional = true
+strict_optional = true
+strict_equality = true
+ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks integration tests",
+]
+
+[tool.coverage.run]
+source = ["backend"]
+omit = ["tests/*", "backend/__pycache__/*"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == \"__main__\":",
+]
